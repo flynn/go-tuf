@@ -1,1 +1,30 @@
-../../0/repository/1.snapshot.json
+{
+	"signatures": [
+		{
+			"keyid": "289e5a9e71afd7909326aa4caea92f7557ee0e2283d8c31f0c3401ce67248a45",
+			"sig": "fe745ed57ec6feb0aec1e5b8c67ea7ae26185dba9111204f2952fa523b6f6c2a9ed68dfe51175a1a3baf25d67e9e0f287512c0bd5c25009d43f57b50143f5808"
+		}
+	],
+	"signed": {
+		"_type": "snapshot",
+		"expires": "2100-01-01T00:00:00Z",
+		"meta": {
+			"root.json": {
+				"hashes": {
+					"sha512": "0b7689274ac6797eda6447844d05d4b871c956394d0fa3476dd5a994a24534f2b929df60f2e2c5634ae5ab475efe30c1b41aa4c6625ca93e79616e435c81e842"
+				},
+				"length": 2407,
+				"version": 1
+			},
+			"targets.json": {
+				"hashes": {
+					"sha512": "d8a4f0e52621223c32ce8c3f2d12947db366140f7e8ea9b4fecd3467979ce0fcfc7145f1bb208676783cfc0a96d02939bc27ea718e6046b2912b7a3d3d0cae54"
+				},
+				"length": 617,
+				"version": 1
+			}
+		},
+		"spec_version": "1.0",
+		"version": 1
+	}
+}

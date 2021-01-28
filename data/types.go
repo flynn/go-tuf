@@ -112,6 +112,19 @@ func (r *Root) AddKey(key *Key) bool {
 	return changed
 }
 
+//TargetAddKey checks existence of a key,
+//Add it to top Target's key filed if not exist
+func (t *Targets) TargetAddKey(key *Key) bool {
+	changed := false
+	for _, id := range key.IDs() {
+		if _, ok := t.Keys[id]; !ok {
+			changed = true
+			t.Keys[id] = key
+		}
+	}
+	return changed
+}
+
 // UniqueKeys returns the unique keys for each associated role.
 // We might have multiple key IDs that correspond to the same key.
 func (r Root) UniqueKeys() map[string][]*Key {
@@ -122,6 +135,28 @@ func (r Root) UniqueKeys() map[string][]*Key {
 		for _, id := range role.KeyIDs {
 			// Double-check that there is actually a key with that ID.
 			if key, ok := r.Keys[id]; ok {
+				val := key.Value.Public.String()
+				if _, ok := seen[val]; ok {
+					continue
+				}
+				seen[val] = struct{}{}
+				keys = append(keys, key)
+			}
+		}
+		keysByRole[name] = keys
+	}
+	return keysByRole
+}
+
+//TargetUniqueKeys checks how many unique keys in top target role
+func (t Targets) TargetUniqueKeys() map[string][]*Key {
+	keysByRole := make(map[string][]*Key)
+	for name, role := range t.Roles {
+		seen := make(map[string]struct{})
+		keys := []*Key{}
+		for _, id := range role.KeyIDs {
+			// Double-check that there is actually a key with that ID.
+			if key, ok := t.Keys[id]; ok {
 				val := key.Value.Public.String()
 				if _, ok := seen[val]; ok {
 					continue
@@ -188,6 +223,7 @@ type Snapshot struct {
 	Meta        SnapshotFiles `json:"meta"`
 }
 
+//NewSnapshot create a Snapshot with default values
 func NewSnapshot() *Snapshot {
 	return &Snapshot{
 		Type:        "snapshot",
@@ -208,11 +244,13 @@ func (f TargetFileMeta) HashAlgorithms() []string {
 }
 
 type Targets struct {
-	Type        string      `json:"_type"`
-	SpecVersion string      `json:"spec_version"`
-	Version     int         `json:"version"`
-	Expires     time.Time   `json:"expires"`
-	Targets     TargetFiles `json:"targets"`
+	Type        string           `json:"_type"`
+	SpecVersion string           `json:"spec_version"`
+	Version     int              `json:"version"`
+	Expires     time.Time        `json:"expires"`
+	Targets     TargetFiles      `json:"targets"`
+	Keys        map[string]*Key  `json:"keys"`
+	Roles       map[string]*Role `json:"roles"`
 }
 
 func NewTargets() *Targets {
@@ -221,6 +259,8 @@ func NewTargets() *Targets {
 		SpecVersion: "1.0",
 		Expires:     DefaultExpires("targets"),
 		Targets:     make(TargetFiles),
+		Keys:        make(map[string]*Key),
+		Roles:       make(map[string]*Role),
 	}
 }
 
