@@ -1,9 +1,12 @@
 package verify
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/asn1"
 	"math/big"
 
@@ -25,8 +28,9 @@ type Verifier interface {
 
 // Verifiers is used to map key types to Verifier instances.
 var Verifiers = map[string]Verifier{
-	data.KeySchemeEd25519:         ed25519Verifier{},
-	data.KeySchemeECDSA_SHA2_P256: p256Verifier{},
+	data.KeySchemeEd25519:           ed25519Verifier{},
+	data.KeySchemeECDSA_SHA2_P256:   p256Verifier{},
+	data.KeySchemeRSASSA_PSS_SHA256: rsaVerifier{},
 }
 
 type ed25519Verifier struct{}
@@ -72,4 +76,53 @@ func (p256Verifier) Verify(key, msg, sigBytes []byte) error {
 func (p256Verifier) ValidKey(k []byte) bool {
 	x, _ := elliptic.Unmarshal(elliptic.P256(), k)
 	return x != nil
+}
+
+type rsaVerifier struct{}
+
+func (v rsaVerifier) Verify(key, msg, sig []byte) error {
+	digest := sha256.Sum256(msg)
+	pub, err := parseKey(key)
+	if err != nil {
+		return ErrInvalid
+	}
+
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return ErrInvalid
+	}
+
+	if err = rsa.VerifyPKCS1v15(rsaPub, crypto.SHA256, digest[:], sig); err != nil {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func (v rsaVerifier) ValidKey(k []byte) bool {
+	pub, err := parseKey(k)
+	if err != nil {
+		return false
+	}
+
+	if _, ok := pub.(*rsa.PublicKey); !ok {
+		return false
+	}
+	return true
+}
+
+// parseKey tries to parse a PEM []byte slice by attempting PKCS8, PKCS1, and PKIX in order.
+func parseKey(data []byte) (interface{}, error) {
+	key, err := x509.ParsePKCS8PrivateKey(data)
+	if err == nil {
+		return key, nil
+	}
+	key, err = x509.ParsePKCS1PrivateKey(data)
+	if err == nil {
+		return key, nil
+	}
+	key, err = x509.ParsePKIXPublicKey(data)
+	if err == nil {
+		return key, nil
+	}
+	return nil, ErrInvalid
 }
