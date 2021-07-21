@@ -322,11 +322,6 @@ func (r *Repo) AddPrivateKey(role string, key *sign.PrivateKey) error {
 }
 
 func (r *Repo) AddPrivateKeyWithExpires(keyRole string, key *sign.PrivateKey, expires time.Time) error {
-	root, err := r.root()
-	if err != nil {
-		return err
-	}
-
 	if !verify.ValidRole(keyRole) {
 		return ErrInvalidRole{keyRole}
 	}
@@ -339,6 +334,19 @@ func (r *Repo) AddPrivateKeyWithExpires(keyRole string, key *sign.PrivateKey, ex
 		return err
 	}
 	pk := key.PublicData()
+
+	return r.AddVerificationKeyWithExpiration(keyRole, pk, expires)
+}
+
+func (r *Repo) AddVerificationKey(keyRole string, pk *data.Key) error {
+	return r.AddVerificationKeyWithExpiration(keyRole, pk, data.DefaultExpires(keyRole))
+}
+
+func (r *Repo) AddVerificationKeyWithExpiration(keyRole string, pk *data.Key, expires time.Time) error {
+	root, err := r.root()
+	if err != nil {
+		return err
+	}
 
 	role, ok := root.Roles[keyRole]
 	if !ok {
@@ -502,7 +510,7 @@ func (r *Repo) Sign(name string) error {
 		return ErrInvalidRole{role}
 	}
 
-	s, err := r.signedMeta(name)
+	s, err := r.SignedMeta(name)
 	if err != nil {
 		return err
 	}
@@ -523,6 +531,60 @@ func (r *Repo) Sign(name string) error {
 		return err
 	}
 	r.meta[name] = b
+	return r.local.SetMeta(name, b)
+}
+
+// AppendSignature allows users to append a signature generated with an external tool.
+// The name must be a valid manifest name, like root.json.
+func (r *Repo) AppendSignature(name string, signature data.Signature) error {
+	role := strings.TrimSuffix(name, ".json")
+	if !verify.ValidRole(role) {
+		return ErrInvalidRole{role}
+	}
+
+	// Check key ID is in valid for the role.
+	db, err := r.db()
+	if err != nil {
+		return err
+	}
+	roleData := db.GetRole(role)
+	if roleData == nil {
+		return ErrInvalidRole{role}
+	}
+	if !roleData.ValidKey(signature.KeyID) {
+		return verify.ErrInvalidKey
+	}
+
+	s, err := r.SignedMeta(name)
+	if err != nil {
+		return err
+	}
+
+	// Add signature if one doesn't already exist with the same key ID.
+	found := false
+	for _, sig := range s.Signatures {
+		if sig.KeyID == signature.KeyID {
+			found = true
+		}
+	}
+	if !found {
+		s.Signatures = append(s.Signatures, signature)
+	}
+
+	// Check signature on signed meta. Ignore threshold errors as this may not be fully
+	// signed.
+	if err := db.VerifySignatures(s, role); err != nil {
+		if _, ok := err.(verify.ErrRoleThreshold); !ok {
+			return err
+		}
+	}
+
+	b, err := r.jsonMarshal(s)
+	if err != nil {
+		return err
+	}
+	r.meta[name] = b
+
 	return r.local.SetMeta(name, b)
 }
 
@@ -562,7 +624,8 @@ func (r *Repo) getSigningKeys(name string) ([]sign.Signer, error) {
 	return keys, nil
 }
 
-func (r *Repo) signedMeta(name string) (*data.Signed, error) {
+// Used to retrieve the signable portion of the metadata when using an external signing tool.
+func (r *Repo) SignedMeta(name string) (*data.Signed, error) {
 	b, ok := r.meta[name]
 	if !ok {
 		return nil, ErrMissingMetadata{name}
@@ -890,7 +953,7 @@ func (r *Repo) Clean() error {
 }
 
 func (r *Repo) verifySignature(name string, db *verify.DB) error {
-	s, err := r.signedMeta(name)
+	s, err := r.SignedMeta(name)
 	if err != nil {
 		return err
 	}
